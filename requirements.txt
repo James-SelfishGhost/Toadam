@@ -1,0 +1,33 @@
+# 3D Cable-Driven Positioning System - Python Host Requirements
+
+# Core dependencies
+numpy>=1.21.0
+PyYAML>=6.0
+pyserial>=3.5
+
+# Optional dependencies for enhanced functionality  
+# (These can be installed as needed for specific features)
+
+# For advanced mathematical operations (already covered by numpy)
+# scipy>=1.7.0
+
+# For configuration file validation
+# jsonschema>=4.0.0
+
+# For web interface (Phase 4)
+# fastapi>=0.70.0
+# uvicorn>=0.15.0
+# websockets>=10.0
+
+# For visualization (Phase 3)  
+# matplotlib>=3.5.0
+# plotly>=5.0.0
+
+# For testing and development
+# pytest>=6.2.0
+# pytest-asyncio>=0.20.0
+# black>=22.0.0
+# flake8>=4.0.0
+
+# System monitoring
+# psutil>=5.8.0 

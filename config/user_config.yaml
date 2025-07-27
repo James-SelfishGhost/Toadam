@@ -1,0 +1,73 @@
+# 3D Cable-Driven Positioning System - Default Configuration
+
+# Serial Communication Settings
+serial:
+  port: null  # Auto-detect if null
+  baudrate: 115200
+  timeout: 1.0
+  auto_detect: true
+
+# Kinematics Engine Settings  
+kinematics:
+  steps_per_mm: 80.0
+  max_cable_length: 2000.0
+  min_cable_length: 50.0
+  
+  # Motor positions in 3D space (mm)
+  motor_positions:
+    - {x: -500, y: 500, z: 1000}   # Motor 1: Front-left
+    - {x: 500, y: 500, z: 1000}    # Motor 2: Front-right
+    - {x: 500, y: -500, z: 1000}   # Motor 3: Back-right
+    - {x: -500, y: -500, z: 1000}  # Motor 4: Back-left
+  
+  # Workspace boundaries (mm)
+  workspace_x_min: -400.0
+  workspace_x_max: 400.0
+  workspace_y_min: -400.0
+  workspace_y_max: 400.0
+  workspace_z_min: 100.0
+  workspace_z_max: 800.0
+
+# Motor Controller Settings
+motor:
+  default_speed: 1000.0      # steps/second
+  default_acceleration: 2000.0  # steps/second²
+  max_speed: 5000.0
+  max_acceleration: 10000.0
+  status_update_interval: 0.1   # seconds
+
+# Position Control Settings
+position:
+  max_position_error: 2.0       # mm
+  position_update_interval: 0.2  # seconds
+  position_file: "position_state.json"
+  enable_workspace_limits: true
+  enable_safety_checks: true
+
+# Calibration Settings
+calibration:
+  calibration_file: "calibration_data.json"
+  max_calibration_age_days: 30.0
+  calibration_accuracy_threshold: 2.0  # mm
+  reference_point_accuracy: 1.0        # mm
+
+# Logging Settings
+logging:
+  level: "INFO"                    # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_file: "logs/cable_system.log"
+  max_file_size_mb: 10.0
+  backup_count: 5
+  console_output: true
+  detailed_format: false
+
+# Safety Settings
+safety:
+  emergency_stop_timeout: 0.1      # seconds
+  workspace_violation_action: "stop"  # stop, warn, clamp
+  max_cable_tension: 100.0         # N (if sensors available)
+  collision_detection_enabled: false
+
+# Custom settings (user-defined)
+custom:
+  system_name: "Cable System v1.0"
+  description: "3D Cable-Driven Positioning System" 
