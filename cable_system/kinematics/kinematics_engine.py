@@ -356,8 +356,8 @@ class KinematicsEngine:
         """Validate motor configuration."""
         # Check motor positions are reasonable
         for i, pos in enumerate(self.motor_positions):
-            if pos.z <= 0:
-                raise ValueError(f"Motor {i+1} must be above Z=0")
+            if pos.z < 0:
+                raise ValueError(f"Motor {i+1} must be at or above Z=0")
         
         # Check motors form a reasonable geometry
         distances = []

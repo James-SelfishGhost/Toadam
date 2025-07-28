@@ -65,7 +65,8 @@ def setup_logging(level: str = "INFO",
             file_handler = logging.handlers.RotatingFileHandler(
                 log_file,
                 maxBytes=int(max_file_size_mb * 1024 * 1024),
-                backupCount=backup_count
+                backupCount=backup_count,
+                encoding='utf-8'
             )
             file_handler.setLevel(numeric_level)
             file_handler.setFormatter(formatter)
@@ -149,7 +150,7 @@ def add_file_handler(log_file: str, level: str = "INFO") -> bool:
             os.makedirs(log_dir)
         
         # Create file handler
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(numeric_level)
         
         # Use same formatter as root logger

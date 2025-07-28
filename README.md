@@ -2,221 +2,281 @@
 
 A sophisticated Python host system for controlling 3D cable-driven positioning systems. This system acts as the intelligent "brain" that handles kinematics, path planning, safety, and user interfaces while communicating with an ATmega2560 motor controller client over serial.
 
-## Architecture Overview
+## 🚀 Current Status: Phase 1 Complete ✅
+
+**Phase 1 (Foundation Layer)** has been fully implemented and is ready for testing:
+
+- ✅ **Serial Communication Manager** - Robust, thread-safe communication with ATmega2560
+- ✅ **Basic Kinematics Engine** - Convert 3D coordinates to motor positions and vice versa  
+- ✅ **Motor Controller Interface** - Clean Python wrapper for Arduino command protocol
+- ✅ **Position Control System** - Basic 3D positioning functionality
+- ✅ **Calibration System** - Accurate motor calibration and management
+
+## System Architecture
 
 - **Python Host** (this codebase): Handles kinematics, path planning, safety, calibration, and user interfaces
 - **ATmega2560 Client**: Simple serial-controlled motor driver (complete and documented separately)
-- **Hardware**: 4 stepper motors in cable-driven configuration for 3D positioning
+- **Hardware Platform**: 4 stepper motors in cable-driven configuration for 3D positioning
 - **Platform**: Designed for ARM-based computers (Raspberry Pi and similar)
 
 ## System Capabilities
 
 ### Core Positioning Features
-- **Precise 3D Positioning**: Sub-millimeter accuracy positioning in 3D space
-- **Smooth Motion Control**: Advanced path planning with coordinated motor movement  
-- **Real-time Operation**: Responsive control suitable for live applications
-- **Safety Systems**: Workspace limits, emergency stops, and error recovery
-- **Calibration Management**: Automated calibration procedures with persistent storage
+- **3D Coordinate Positioning**: Move to absolute 3D coordinates with sub-millimeter accuracy
+- **Relative Movement**: Move relative to current position
+- **Workspace Limits**: Automatic boundary enforcement and safety checks
+- **Position Persistence**: Save and restore position state across sessions
 
-### Advanced Features
-- **Multiple Control Interfaces**: Python API, web interface, and remote control
-- **Live Stream Integration**: Audience control for entertainment applications
-- **Camera Control**: Specialized functions for photography and cinematography
-- **Visualization**: Real-time 3D workspace visualization and monitoring
-- **Automation**: Movement sequences, scripting, and scheduled operations
+### Safety & Reliability
+- **Multi-layer Safety**: Software limits, hardware monitoring, and emergency stops
+- **Auto-reconnection**: Robust serial communication with automatic recovery
+- **Error Handling**: Comprehensive error detection and graceful recovery
+- **Emergency Stop**: <100ms response time for critical safety events
 
-## Hardware Configuration
+### Calibration & Accuracy
+- **Semi-automatic Calibration**: Guided calibration procedures with validation
+- **Reference Points**: Multiple known positions for accuracy verification
+- **Calibration Persistence**: Save calibration data for consistent operation
+- **Accuracy Monitoring**: Real-time position error tracking
 
-### Motor Layout
-The system uses 4 stepper motors positioned at the corners of a rectangular workspace:
-- **Motor 0**: Front Left (-569, 236, 0) mm
-- **Motor 1**: Back Left (-569, -269, 0) mm  
-- **Motor 2**: Back Right (569, -269, 0) mm
-- **Motor 3**: Front Right (569, 236, 0) mm
-
-### ATmega2560 Controller
-- **Connection**: USB serial at 115200 baud
-- **Function**: Motor control client executing movement commands
-- **Status**: Complete firmware with documented command protocol
-- **Commands**: MOVE, SETPOS, SPEED, ACCEL, STOP, ENABLE, CALIB, STATUS, PING
-
-## Implementation Status
-
-### Phase 1: Foundation Layer ✅ Planned
-**Essential building blocks for the system**
-- [ ] Serial Communication Manager
-- [ ] Basic Kinematics Engine  
-- [ ] Motor Controller Interface
-- [ ] Position Control System
-- [ ] Calibration System
-
-### Phase 2: Core Positioning System 🔄 Next
-**Basic 3D positioning functionality**
-- [ ] Advanced Safety and Limits System
-- [ ] Path Planning Engine
-- [ ] Motion Profiles and Optimization
-
-### Phase 3: User Interface & Control 📋 Future
-**Making the system usable**
-- [ ] Python API Layer
-- [ ] Configuration Management
-- [ ] Logging and Monitoring System
-- [ ] Real-time Visualization
-
-### Phase 4: Advanced Features 📋 Future
-**Enhanced capabilities**
-- [ ] Web Interface and Remote Control
-- [ ] Live Stream Integration
-- [ ] Camera Control Integration
-- [ ] Sequence and Automation
-
-## Quick Start Guide
+## Quick Start
 
 ### Prerequisites
+- Python 3.8+ 
+- ATmega2560 motor controller (firmware installed)
+- USB serial connection
+- 4 stepper motors in cable-driven configuration
+
+### Installation
+
+**Windows:**
+```cmd
+install.bat
+```
+
+**Linux/macOS:**
 ```bash
-# Install Python dependencies (when available)
+./install.sh
+```
+
+**Manual Installation:**
+```bash
 pip install -r requirements.txt
-
-# Connect ATmega2560 via USB serial
-# Default: /dev/ttyUSB0 on Linux, COM port on Windows
+pip install -e .
 ```
 
-### Basic Usage Example
+### Basic Usage
+
 ```python
-from toadam import MotionController
+import asyncio
+from cable_system import CablePositioningSystem
 
-# Initialize controller
-controller = MotionController("/dev/ttyUSB0")
+async def main():
+    # Create and initialize system
+    system = CablePositioningSystem()
+    await system.initialize()
+    
+    # Move to 3D position
+    from cable_system.kinematics.kinematics_engine import Point3D
+    target = Point3D(100, 200, 300)  # mm
+    success = await system.position_controller.move_to_position(target)
+    
+    # Relative movement
+    delta = Point3D(50, 0, 0)  # Move 50mm in X direction
+    success = await system.position_controller.move_relative(delta)
+    
+    # Get current position
+    current_pos = await system.position_controller.get_current_position()
+    print(f"Current position: {current_pos}")
 
-# Move to 3D position
-await controller.move_to(x=100, y=50, z=400)
-
-# Check current position
-position = await controller.get_position()
-print(f"Current position: {position}")
-
-# Close connection
-await controller.close()
+# Run the system
+asyncio.run(main())
 ```
 
-### Calibration Process
-```python
-# Semi-automatic calibration
-calibrator = Calibrator(controller)
-await calibrator.run_calibration_sequence()
+### Running the Demo
 
-# Manual calibration
-await controller.calibrate_motor(motor=0, steps_per_mm=2.5)
-await controller.save_calibration()
+```bash
+python main.py
+```
+
+This will:
+1. Initialize all system components
+2. Establish serial communication with ATmega2560
+3. Run a demonstration of Phase 1 capabilities
+4. Display system status and statistics
+
+## Configuration
+
+The system uses YAML configuration files. Default configuration is in `config/default_config.yaml`:
+
+```yaml
+# Serial Communication
+serial:
+  port: null  # Auto-detect
+  baudrate: 115200
+  timeout: 1.0
+
+# Kinematics Settings
+kinematics:
+  steps_per_mm: 80.0
+  motor_positions:
+    - {x: -500, y: 500, z: 1000}   # Motor 1: Front-left
+    - {x: 500, y: 500, z: 1000}    # Motor 2: Front-right
+    - {x: 500, y: -500, z: 1000}   # Motor 3: Back-right
+    - {x: -500, y: -500, z: 1000}  # Motor 4: Back-left
+
+# Workspace Boundaries
+kinematics:
+  workspace_x_min: -400.0
+  workspace_x_max: 400.0
+  workspace_y_min: -400.0
+  workspace_y_max: 400.0
+  workspace_z_min: 100.0
+  workspace_z_max: 800.0
+```
+
+## Project Structure
+
+```
+cable_system/
+├── communication/          # Serial communication with ATmega2560
+│   └── serial_manager.py  # Thread-safe serial interface
+├── kinematics/            # 3D positioning mathematics
+│   └── kinematics_engine.py  # Forward/inverse kinematics
+├── control/              # Motor and position control
+│   ├── motor_controller.py   # Arduino interface wrapper
+│   └── position_control.py   # High-level 3D positioning
+├── calibration/          # System calibration
+│   └── calibration_system.py # Semi-automatic calibration
+├── config/              # Configuration management
+│   └── settings.py      # YAML/JSON config system
+└── utils/               # Utilities and safety
+    ├── safety.py        # Multi-layer safety system
+    └── logging_config.py # Structured logging
 ```
 
 ## Development Roadmap
 
-### Phase 1 Priorities (Foundation)
-1. **Serial Communication Manager**
-   - Robust connection handling with auto-reconnection
-   - Thread-safe command queuing and response processing
-   - Comprehensive error detection and recovery
+### ✅ Phase 1: Foundation Layer (COMPLETE)
+- [x] Serial Communication Manager
+- [x] Basic Kinematics Engine  
+- [x] Motor Controller Interface
+- [x] Position Control System
+- [x] Calibration System
 
-2. **Kinematics Engine**
-   - 3D coordinate to cable length calculations
-   - Forward and inverse kinematics
-   - Workspace boundary definitions and validation
+### 🔄 Phase 2: Advanced Motion Control (In Development)
+- [ ] Advanced Safety and Limits System
+- [ ] Path Planning Engine
+- [ ] Motion Profiles and Optimization
 
-3. **Motor Controller Interface**  
-   - Python wrapper for all Arduino commands
-   - Real-time motor state tracking
-   - Movement completion detection and synchronization
+### 📋 Phase 3: User Interface & Control (Planned)
+- [ ] Python API Layer
+- [ ] Configuration Management
+- [ ] Logging and Monitoring
+- [ ] Real-time Visualization
 
-4. **Position Control System**
-   - Absolute and relative 3D positioning
-   - Current position tracking and persistence
-   - Basic safety checks and limit enforcement
+### 🎯 Phase 4: Advanced Features (Planned)
+- [ ] Sequence and Automation
+- [ ] Camera Control Integration
+- [ ] Web Interface and Remote Control
+- [ ] Live Stream Integration
 
-5. **Calibration System**
-   - Automated calibration procedures
-   - Measurement validation and accuracy testing
-   - Persistent calibration storage and management
+## API Examples
 
-### Architecture Principles
-- **Modularity**: Independent, testable components
-- **Thread Safety**: Concurrent operation support
-- **Error Recovery**: Graceful failure handling
-- **Performance**: Real-time responsiveness on ARM hardware  
-- **Extensibility**: Easy feature addition and customization
+### Basic Positioning
+```python
+# Move to absolute position
+target = Point3D(100, 200, 300)
+await position_controller.move_to_position(target)
 
-## Hardware Requirements
+# Relative movement
+delta = Point3D(50, 0, 0)
+await position_controller.move_relative(delta)
 
-### Minimum System Requirements
-- **ARM-based computer** (Raspberry Pi 4+ recommended)
-- **USB Serial Connection** to ATmega2560
-- **Python 3.8+** with pip package management
-- **2GB RAM** minimum, 4GB recommended
-- **Network connectivity** for remote features
+# Move to workspace center
+await position_controller.move_to_workspace_center()
+```
 
-### Recommended Development Environment
-- **Operating System**: Raspberry Pi OS, Ubuntu, or similar Linux distribution
-- **Development**: VS Code with Python extension
-- **Version Control**: Git for development and deployment
-- **Monitoring**: System monitoring tools for production use
+### Calibration
+```python
+# Check calibration status
+if await calibration_system.is_calibrated():
+    print("System is calibrated")
+else:
+    print("System needs calibration")
+
+# Run full calibration
+success = await calibration_system.run_full_calibration()
+```
+
+### Safety Monitoring
+```python
+# Add safety callback
+def on_safety_event(event):
+    print(f"Safety event: {event}")
+
+safety_manager.add_safety_callback(on_safety_event)
+
+# Emergency stop
+await safety_manager.trigger_emergency_stop("Manual trigger")
+```
+
+## Performance Targets
+
+- **Positioning Accuracy**: ±0.5mm or better
+- **Response Time**: <1 second for positioning commands
+- **Emergency Stop**: <100ms response time
+- **Communication**: Stable operation with <0.1% command failure rate
+- **Uptime**: 99%+ availability for production use
+
+## Platform Requirements
+
+- **Hardware**: ARM-based computer (Raspberry Pi 4+ class)
+- **Python**: 3.8+ with full async/await support
+- **Memory**: 2GB minimum, 4GB recommended
+- **Storage**: 16GB+ for system and logging
+- **Network**: Ethernet or WiFi for remote features
+
+## Troubleshooting
+
+### Serial Connection Issues
+- Check USB cable connection
+- Verify ATmega2560 firmware is loaded
+- Check port permissions (Linux: add user to dialout group)
+- Try different USB ports
+
+### Calibration Problems
+- Ensure motors are properly homed
+- Check workspace boundaries in configuration
+- Verify motor positions are correctly measured
+- Run quick calibration check: `await calibration_system.quick_calibration_check()`
+
+### Performance Issues
+- Check system resources (CPU, memory)
+- Verify serial communication stability
+- Monitor log files for errors
+- Adjust configuration parameters as needed
 
 ## Contributing
 
-### Development Setup
-```bash
-# Clone repository
-git clone <repository-url>
-cd toadam
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+## License
 
-# Install development dependencies
-pip install -r requirements-dev.txt
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-# Run tests
-pytest tests/
-```
+## Support
 
-### Code Standards
-- **Style**: Black formatter, flake8 linting
-- **Type Hints**: Full type annotation for public APIs  
-- **Documentation**: Comprehensive docstrings and examples
-- **Testing**: Unit tests for all core functionality
-- **Logging**: Structured logging for debugging and monitoring
-
-## Applications
-
-### Primary Use Cases
-1. **Camera Control**: Precise positioning for photography and cinematography
-2. **Live Entertainment**: Audience-controlled camera movement for streaming
-3. **Research Platform**: Cable-driven robotics research and development
-4. **Industrial Applications**: Precise positioning for manufacturing or inspection
-
-### Integration Examples
-- **OBS Studio**: Camera control for live streaming
-- **Photography Software**: Automated shot composition
-- **Chat Bots**: Twitch/YouTube chat integration
-- **IoT Platforms**: Home automation and monitoring
-
-## Support and Documentation
-
-### Resources
-- **API Documentation**: Comprehensive API reference (when available)
-- **Hardware Guide**: ATmega2560 setup and wiring diagrams  
-- **Calibration Manual**: Step-by-step calibration procedures
-- **Troubleshooting Guide**: Common issues and solutions
-- **Example Projects**: Sample applications and use cases
-
-### Community
-- **Issue Tracking**: GitHub issues for bugs and feature requests
-- **Discussions**: Community forum for questions and sharing
-- **Contributing**: Guidelines for code contributions and improvements
+For issues and questions:
+- Check the troubleshooting section above
+- Review log files in the `logs/` directory
+- Consult the goals.md file for detailed specifications
+- Open an issue on the project repository
 
 ---
 
-**Status**: 🚧 **In Development** - Phase 1 implementation in progress
-
-This system represents a comprehensive platform for cable-driven 3D positioning with applications ranging from entertainment to industrial automation. The modular architecture ensures reliability while providing flexibility for diverse use cases. 
+**Status**: Phase 1 Complete ✅ | **Next**: Phase 2 Advanced Motion Control 

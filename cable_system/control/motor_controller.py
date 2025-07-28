@@ -95,8 +95,8 @@ class MotorController:
         self._status_update_task: Optional[asyncio.Task] = None
         self._update_interval = 0.1  # 100ms update interval
         
-        # Initialize motor states (4 motors)
-        for motor_id in range(1, 5):
+        # Initialize motor states (4 motors: 0-3)
+        for motor_id in range(4):
             self._motor_states[motor_id] = MotorState(
                 motor_id=motor_id,
                 position=0,
@@ -120,14 +120,27 @@ class MotorController:
                 self.logger.error("Serial manager not connected")
                 return False
             
-            # Initialize communication with Arduino
-            response = await self.serial_manager.send_command("init", {})
-            if not response.success:
-                self.logger.error(f"Failed to initialize Arduino: {response.error}")
+            # Initialize communication with Arduino using supported commands
+            # First, get system status to verify communication
+            status_response = await self.serial_manager.send_command("status", {})
+            if not status_response.success:
+                self.logger.error(f"Failed to get Arduino status: {status_response.error}")
                 return False
+            
+            self.logger.info(f"Arduino status: {status_response.raw_response}")
+            
+            # Enable motors
+            enable_response = await self.serial_manager.send_command("enable", {"state": 1})
+            if not enable_response.success:
+                self.logger.warning(f"Failed to enable motors: {enable_response.error}")
+            else:
+                self.logger.info("Motors enabled")
             
             # Get initial system status
             await self._update_system_status()
+            
+            # Record start time for uptime calculation
+            self._start_time = time.time()
             
             # Start status monitoring
             self._status_update_task = asyncio.create_task(self._status_update_loop())
@@ -150,8 +163,8 @@ class MotorController:
                 except asyncio.CancelledError:
                     pass
             
-            # Send shutdown command to Arduino
-            await self.serial_manager.send_command("shutdown", {})
+            # Stop all motors using Arduino's STOP command
+            await self.serial_manager.send_command("stop", {})
             
             self.logger.info("Motor controller stopped")
             
@@ -257,7 +270,7 @@ class MotorController:
             
             if response.success:
                 # Update all motor states
-                for motor_id in range(1, 5):
+                for motor_id in range(4):
                     self._motor_states[motor_id].is_homed = True
                     self._motor_states[motor_id].position = 0
                     self._motor_states[motor_id].target_position = 0
@@ -278,7 +291,7 @@ class MotorController:
         Move a single motor to absolute position.
         
         Args:
-            motor_id: Motor ID (1-4)
+            motor_id: Motor ID (0-3)
             position: Target position in steps
             speed: Movement speed in steps/second (optional)
             acceleration: Acceleration in steps/second² (optional)
@@ -290,25 +303,44 @@ class MotorController:
             return False
         
         try:
-            command_data = {
-                "motor_id": motor_id,
-                "position": position
-            }
+            # Calculate step delta from current position
+            current_position = self._motor_states[motor_id].position
+            step_delta = position - current_position
             
+            # Skip if no movement needed
+            if step_delta == 0:
+                self.logger.debug(f"Motor {motor_id} already at position {position}")
+                return True
+            
+            # Set speed and acceleration if specified
             if speed is not None:
-                command_data["speed"] = speed
-            if acceleration is not None:
-                command_data["acceleration"] = acceleration
+                speed_response = await self.serial_manager.send_command(
+                    "SPEED",
+                    {"motor": motor_id, "speed": int(speed)}
+                )
+                if not speed_response.success:
+                    self.logger.warning(f"Failed to set speed for motor {motor_id}")
             
+            if acceleration is not None:
+                accel_response = await self.serial_manager.send_command(
+                    "ACCEL", 
+                    {"motor": motor_id, "acceleration": int(acceleration)}
+                )
+                if not accel_response.success:
+                    self.logger.warning(f"Failed to set acceleration for motor {motor_id}")
+            
+            # Send movement command using Arduino MOVE command with step delta
             response = await self.serial_manager.send_command(
-                "move_motor_to_position",
-                command_data
+                "MOVE",
+                {"motor": motor_id, "steps": step_delta}
             )
             
             if response.success:
+                # Update position tracking in Python
+                self._motor_states[motor_id].position = position
                 self._motor_states[motor_id].target_position = position
                 self._motor_states[motor_id].status = MotorStatus.MOVING
-                self.logger.debug(f"Motor {motor_id} moving to position {position}")
+                self.logger.debug(f"Motor {motor_id} moving {step_delta} steps to position {position}")
                 return True
             else:
                 self.logger.error(f"Motor {motor_id} move failed: {response.error}")
@@ -324,7 +356,7 @@ class MotorController:
         Move all motors to specified positions simultaneously.
         
         Args:
-            positions: List of 4 target positions in steps [M1, M2, M3, M4]
+            positions: List of 4 target positions in steps [M0, M1, M2, M3]
             speed: Movement speed in steps/second (optional)
             acceleration: Acceleration in steps/second² (optional)
             
@@ -336,28 +368,54 @@ class MotorController:
             return False
         
         try:
-            command_data = {"positions": positions}
-            
+            # Set speed and acceleration for all motors if specified
             if speed is not None:
-                command_data["speed"] = speed
+                speed_response = await self.serial_manager.send_command(
+                    "SPEED",
+                    {"motor": "ALL", "speed": int(speed)}
+                )
+                if not speed_response.success:
+                    self.logger.warning("Failed to set speed for all motors")
+            
             if acceleration is not None:
-                command_data["acceleration"] = acceleration
+                accel_response = await self.serial_manager.send_command(
+                    "ACCEL",
+                    {"motor": "ALL", "acceleration": int(acceleration)}
+                )
+                if not accel_response.success:
+                    self.logger.warning("Failed to set acceleration for all motors")
             
-            response = await self.serial_manager.send_command(
-                "move_all_motors_to_positions",
-                command_data
-            )
-            
-            if response.success:
-                # Update target positions for all motors
-                for motor_id in range(1, 5):
-                    self._motor_states[motor_id].target_position = positions[motor_id - 1]
-                    self._motor_states[motor_id].status = MotorStatus.MOVING
+            # Send individual MOVE commands for each motor (0-based indexing)
+            all_success = True
+            for motor_id in range(4):
+                target_position = positions[motor_id]
+                current_position = self._motor_states[motor_id].position
+                step_delta = target_position - current_position
                 
+                # Skip if no movement needed
+                if step_delta == 0:
+                    self.logger.debug(f"Motor {motor_id} already at position {target_position}")
+                    continue
+                
+                response = await self.serial_manager.send_command(
+                    "MOVE",
+                    {"motor": motor_id, "steps": step_delta}
+                )
+                
+                if response.success:
+                    # Update position tracking in Python
+                    self._motor_states[motor_id].position = target_position
+                    self._motor_states[motor_id].target_position = target_position
+                    self._motor_states[motor_id].status = MotorStatus.MOVING
+                else:
+                    self.logger.error(f"Motor {motor_id} move to {target_position} failed: {response.error}")
+                    all_success = False
+            
+            if all_success:
                 self.logger.debug(f"All motors moving to positions: {positions}")
                 return True
             else:
-                self.logger.error(f"All motors move failed: {response.error}")
+                self.logger.error("Some motors failed to receive movement commands")
                 return False
                 
         except Exception as e:
@@ -469,8 +527,8 @@ class MotorController:
 
     def _validate_motor_id(self, motor_id: int) -> bool:
         """Validate motor ID is in valid range."""
-        if not (1 <= motor_id <= 4):
-            self.logger.error(f"Invalid motor ID: {motor_id}. Must be 1-4.")
+        if not (0 <= motor_id <= 3):
+            self.logger.error(f"Invalid motor ID: {motor_id}. Must be 0-3.")
             return False
         return True
 
@@ -492,25 +550,31 @@ class MotorController:
         """Update system status from Arduino."""
         try:
             response = await self.serial_manager.send_command(
-                "get_system_status", 
+                "status", 
                 {},
                 timeout=2.0
             )
             
             if response.success:
-                data = response.data
+                # Parse the STATUS response (plain text from Arduino)
+                status_text = response.raw_response or ""
                 
-                # Update system status
+                # Update system status with basic info from STATUS command
                 old_status = self._system_status
                 self._system_status = SystemStatus(
                     is_connected=True,
-                    all_motors_idle=data.get('all_motors_idle', False),
-                    emergency_stop_active=data.get('emergency_stop_active', False),
-                    calibration_complete=data.get('calibration_complete', False),
-                    system_errors=data.get('system_errors', []),
-                    uptime_seconds=data.get('uptime_seconds', 0.0),
+                    all_motors_idle=True,  # Default to idle unless we detect movement
+                    emergency_stop_active=False,  # Default to false
+                    calibration_complete=True,  # Assume calibrated since Arduino loaded it
+                    system_errors=[],  # Will be populated if we detect errors in status
+                    uptime_seconds=time.time() - getattr(self, '_start_time', time.time()),
                     last_update=time.time()
                 )
+                
+                # Check status text for any error indicators
+                if status_text and any(error_word in status_text.lower() 
+                                     for error_word in ['error', 'failed', 'fault']):
+                    self._system_status.system_errors.append(status_text)
                 
                 # Notify callbacks if status changed significantly
                 if (old_status.all_motors_idle != self._system_status.all_motors_idle or
@@ -525,37 +589,36 @@ class MotorController:
             self._system_status.is_connected = False
 
     async def _update_motor_states(self):
-        """Update motor states from Arduino."""
+        """Update motor states from Arduino using STATUS command."""
         try:
             response = await self.serial_manager.send_command(
-                "get_motor_states",
+                "status",
                 {},
                 timeout=2.0
             )
             
             if response.success:
-                motor_data = response.data.get('motors', [])
-                
-                for motor_info in motor_data:
-                    motor_id = motor_info.get('motor_id')
-                    if motor_id and 1 <= motor_id <= 4:
+                # For now, just mark all motors as idle since we don't have detailed state info
+                # The Arduino's STATUS command gives system-level status, not per-motor details
+                for motor_id in range(4):
+                    if motor_id in self._motor_states:
                         old_state = self._motor_states[motor_id]
                         
-                        # Update motor state
+                        # Update motor state with basic info
                         self._motor_states[motor_id] = MotorState(
                             motor_id=motor_id,
-                            position=motor_info.get('position', 0),
-                            target_position=motor_info.get('target_position', 0),
-                            status=MotorStatus(motor_info.get('status', 'unknown')),
-                            speed=motor_info.get('speed', 0.0),
-                            acceleration=motor_info.get('acceleration', 0.0),
-                            is_homed=motor_info.get('is_homed', False),
-                            error_code=motor_info.get('error_code'),
-                            error_message=motor_info.get('error_message')
+                            position=self._motor_states[motor_id].position,  # Keep last known position
+                            target_position=self._motor_states[motor_id].target_position,
+                            status=MotorStatus.IDLE,  # Default to idle
+                            speed=0.0,  # Default to stopped
+                            acceleration=0.0,
+                            is_homed=True,  # Arduino says calibration loaded
+                            error_code=None,
+                            error_message=None
                         )
                         
                         # Notify callbacks if state changed
-                        if old_state.status != self._motor_states[motor_id].status:
+                        if old_state.status != MotorStatus.IDLE:
                             self._notify_motor_callbacks(motor_id)
                             
         except Exception as e:

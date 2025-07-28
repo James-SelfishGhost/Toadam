@@ -1,0 +1,15 @@
+{
+  "current_position": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": -225.0
+  },
+  "target_position": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": -225.0
+  },
+  "is_moving": false,
+  "last_updated": 1753664340.962428,
+  "accuracy_error": 0.0
+}

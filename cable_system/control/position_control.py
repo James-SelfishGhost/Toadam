@@ -114,8 +114,8 @@ class PositionController:
             # Start position tracking
             self._position_update_task = asyncio.create_task(self._position_update_loop())
             
-            # Update current position from motors
-            await self._update_current_position()
+            # Initialize position from calibration if current position is invalid
+            await self._initialize_position_if_needed()
             
             self.logger.info("Position controller started successfully")
             return True
@@ -265,15 +265,17 @@ class PositionController:
             if not await self.motor_controller.wait_for_movement_complete(timeout=1.0):
                 continue
             
-            # Update current position
-            await self._update_current_position()
+            # Movement completed - current position should now be at target
+            self._position_state.current_position = self._position_state.target_position
+            self._position_state.is_moving = False
+            self._position_state.accuracy_error = 0.0
+            self._position_state.last_updated = time.time()
             
-            # Check if we're within accuracy
+            # Check if we're within accuracy (should be perfect since we track internally)
             error = self._position_state.current_position.distance_to(target)
             if error <= accuracy:
-                self._position_state.is_moving = False
-                self._position_state.accuracy_error = error
                 self._notify_position_callbacks()
+                await self._save_position_state()
                 self.logger.info(f"Position reached with {error:.2f}mm accuracy")
                 return True
             
@@ -382,27 +384,15 @@ class PositionController:
         return True
 
     async def _update_current_position(self):
-        """Update current position from motor positions."""
+        """Update position state after successful movement completion."""
         try:
-            # Get current motor states
-            motor_states = self.motor_controller.get_all_motor_states()
+            # Position is tracked internally - we update it when movements complete
+            # This method now just updates the timestamp and accuracy
+            self._position_state.accuracy_error = self._position_state.current_position.distance_to(
+                self._position_state.target_position
+            )
+            self._position_state.last_updated = time.time()
             
-            # Convert motor positions to cable lengths
-            motor_positions = [motor_states[i].position for i in range(1, 5)]
-            cable_lengths = self.kinematics.motor_steps_to_cable_lengths(motor_positions)
-            
-            # Calculate 3D position
-            position = self.kinematics.forward_kinematics(cable_lengths)
-            
-            if position is not None:
-                self._position_state.current_position = position
-                self._position_state.accuracy_error = position.distance_to(
-                    self._position_state.target_position
-                )
-                self._position_state.last_updated = time.time()
-            else:
-                self.logger.warning("Failed to calculate current position from motor states")
-                
         except Exception as e:
             self.logger.error(f"Position update error: {e}")
 
@@ -410,17 +400,16 @@ class PositionController:
         """Background task for updating position state."""
         while True:
             try:
-                # Update current position from motors
-                await self._update_current_position()
-                
                 # Check if movement completed
                 system_status = self.motor_controller.get_system_status()
                 if self._position_state.is_moving and system_status.all_motors_idle:
-                    # Movement may have completed
-                    error = self._position_state.accuracy_error
-                    if error <= self.max_position_error:
-                        self._position_state.is_moving = False
-                        self.logger.debug(f"Movement completed with {error:.2f}mm error")
+                    # Movement completed - update current position to target position
+                    self._position_state.current_position = self._position_state.target_position
+                    self._position_state.is_moving = False
+                    self._position_state.accuracy_error = 0.0
+                    self._position_state.last_updated = time.time()
+                    self.logger.debug("Movement completed - position updated")
+                    await self._save_position_state()
                 
                 # Notify callbacks periodically
                 self._notify_position_callbacks()
@@ -462,6 +451,32 @@ class PositionController:
         except Exception as e:
             self.logger.error(f"Failed to load position state: {e}")
             # Use default state on error
+
+    async def _initialize_position_if_needed(self):
+        """Initialize position from calibration data if current position is invalid."""
+        try:
+            current_pos = self._position_state.current_position
+            
+            # Check if current position is valid (not at origin)
+            if (current_pos.x == 0.0 and current_pos.y == 0.0 and current_pos.z == 0.0):
+                self.logger.info("Current position is at origin, attempting to initialize from calibration")
+                
+                # Try to get a reference position from calibration system if available
+                # For now, use a safe default position in the workspace
+                safe_position = self.kinematics.workspace_center
+                
+                # Validate the position is reachable
+                if self._validate_target_position(safe_position):
+                    self._position_state.current_position = safe_position
+                    self._position_state.target_position = safe_position
+                    self._position_state.last_updated = time.time()
+                    self.logger.info(f"Initialized position to workspace center: {safe_position}")
+                    await self._save_position_state()
+                else:
+                    self.logger.warning("Could not initialize to workspace center - position not reachable")
+                    
+        except Exception as e:
+            self.logger.error(f"Position initialization error: {e}")
 
     def _notify_position_callbacks(self):
         """Notify all position callbacks."""

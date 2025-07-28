@@ -7,7 +7,6 @@ command queuing, and error handling.
 
 import asyncio
 import logging
-import json
 import time
 from typing import Optional, Dict, Any, Callable, List
 from dataclasses import dataclass
@@ -42,21 +41,70 @@ class SerialCommand:
         if self.timestamp is None:
             self.timestamp = time.time()
 
-    def to_json(self) -> str:
-        """Convert command to JSON string for serial transmission."""
-        return json.dumps({
-            'command': self.command,
-            'data': self.data,
-            'timestamp': self.timestamp
-        })
+    def to_string(self) -> str:
+        """Convert command to plain text string for serial transmission."""
+        # Convert to plain text format expected by Arduino
+        cmd_upper = self.command.upper()
+        
+        if cmd_upper == 'PING':
+            return 'PING'
+        elif cmd_upper == 'STATUS':
+            return 'STATUS'
+        elif cmd_upper == 'MOVE':
+            motor = self.data.get('motor', 0)
+            steps = self.data.get('steps', 0)
+            return f'MOVE {motor} {steps}'
+        elif cmd_upper == 'MOVEMM':
+            motor = self.data.get('motor', 0)
+            mm = self.data.get('mm', 0)
+            return f'MOVEMM {motor} {mm}'
+        elif cmd_upper == 'SETPOS':
+            motor = self.data.get('motor', 0)
+            pos = self.data.get('position', 0)
+            return f'SETPOS {motor} {pos}'
+        elif cmd_upper == 'SPEED':
+            motor = self.data.get('motor', 'ALL')
+            speed = self.data.get('speed', 100)
+            return f'SPEED {motor} {speed}'
+        elif cmd_upper == 'ACCEL':
+            motor = self.data.get('motor', 'ALL')
+            accel = self.data.get('acceleration', 100)
+            return f'ACCEL {motor} {accel}'
+        elif cmd_upper == 'STOP':
+            motor = self.data.get('motor', '')
+            if motor:
+                return f'STOP {motor}'
+            else:
+                return 'STOP'
+        elif cmd_upper == 'ENABLE':
+            state = self.data.get('state', 1)
+            return f'ENABLE {state}'
+        elif cmd_upper == 'CALIB':
+            if 'motor' in self.data and 'steps_per_mm' in self.data:
+                motor = self.data['motor']
+                steps_per_mm = self.data['steps_per_mm']
+                return f'CALIB {motor} {steps_per_mm}'
+            elif 'action' in self.data:
+                action = self.data['action'].upper()
+                return f'CALIB {action}'
+            else:
+                return 'CALIB SHOW'
+        else:
+            # Generic command with parameters
+            params = ' '.join(str(v) for v in self.data.values())
+            if params:
+                return f'{cmd_upper} {params}'
+            else:
+                return cmd_upper
 
 
 class SerialResponse:
     """Represents a response from the motor controller."""
-    def __init__(self, success: bool, data: Dict[str, Any] = None, error: str = None):
+    def __init__(self, success: bool, data: Dict[str, Any] = None, error: str = None, raw_response: str = None):
         self.success = success
         self.data = data or {}
         self.error = error
+        self.raw_response = raw_response
         self.timestamp = time.time()
 
 
@@ -71,7 +119,7 @@ class SerialManager:
     - Thread-safe operation for concurrent access
     """
 
-    def __init__(self, port: str = None, baudrate: int = 115200, timeout: float = 1.0):
+    def __init__(self, port: str = None, baudrate: int = 115200, timeout: float = 2.0):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -89,6 +137,9 @@ class SerialManager:
         self._command_thread: Optional[threading.Thread] = None
         self._read_thread: Optional[threading.Thread] = None
         self._running = False
+        
+        # Response buffer for processing multi-line responses
+        self._response_buffer = []
         
         # Statistics and monitoring
         self._stats = {
@@ -224,6 +275,7 @@ class SerialManager:
                 if self._serial and self._serial.is_open:
                     self._serial.close()
 
+                self.logger.info(f"Connecting to {self.port} at {self.baudrate} baud...")
                 self._serial = serial.Serial(
                     port=self.port,
                     baudrate=self.baudrate,
@@ -231,8 +283,16 @@ class SerialManager:
                     write_timeout=self.timeout
                 )
                 
+                # Allow Arduino to reset and initialize - Arduino typically takes 1-2 seconds
+                self.logger.info("Waiting for Arduino to initialize...")
+                await asyncio.sleep(3.0)
+                
+                # Clear any initial bootup messages
+                if self._serial.in_waiting > 0:
+                    initial_data = self._serial.read_all().decode('utf-8', errors='ignore')
+                    self.logger.debug(f"Initial Arduino output: {initial_data}")
+                
                 # Test connection with ping
-                await asyncio.sleep(0.1)  # Allow Arduino to reset
                 test_response = await self._test_connection()
                 
                 if test_response:
@@ -276,19 +336,39 @@ class SerialManager:
     async def _test_connection(self) -> bool:
         """Test connection by sending ping command."""
         try:
-            ping_cmd = SerialCommand('ping', {}, CommandPriority.HIGH, timeout=2.0)
-            self._send_raw_command(ping_cmd)
+            self.logger.info("Testing connection with PING command...")
             
-            # Wait for pong response
+            # Send PING command
+            with self._connection_lock:
+                if not self._serial or not self._serial.is_open:
+                    return False
+                
+                self._serial.write(b'PING\n')
+                self._serial.flush()
+            
+            # Wait for response - Arduino should respond with some acknowledgment
             start_time = time.time()
-            while time.time() - start_time < 2.0:
+            response_received = False
+            
+            while time.time() - start_time < 3.0:  # Increased timeout
                 if self._serial and self._serial.in_waiting > 0:
-                    response = self._read_response()
-                    if response and response.get('command') == 'pong':
-                        return True
+                    line = self._serial.readline().decode('utf-8', errors='ignore').strip()
+                    self.logger.info(f"Received response: '{line}'")
+                    
+                    # Arduino might respond with various messages, just check we got something meaningful
+                    if line and not line.startswith('='):  # Skip header lines
+                        response_received = True
+                        break
+                        
                 await asyncio.sleep(0.1)
             
-            return False
+            if response_received:
+                self.logger.info("Connection test successful")
+                return True
+            else:
+                self.logger.warning("No response to PING command")
+                return False
+                
         except Exception as e:
             self.logger.error(f"Connection test failed: {e}")
             return False
@@ -327,9 +407,9 @@ class SerialManager:
                     continue
                 
                 if self._serial.in_waiting > 0:
-                    response = self._read_response()
-                    if response:
-                        self._handle_response(response)
+                    line = self._read_line()
+                    if line:
+                        self._handle_response_line(line)
                 else:
                     time.sleep(0.01)  # Small delay to prevent CPU spinning
                     
@@ -345,8 +425,10 @@ class SerialManager:
                 if not self._serial or not self._serial.is_open:
                     return False
                 
-                json_data = cmd.to_json() + '\n'
-                self._serial.write(json_data.encode('utf-8'))
+                command_str = cmd.to_string() + '\n'
+                self.logger.debug(f"Sending command: {command_str.strip()}")
+                self._serial.write(command_str.encode('utf-8'))
+                self._serial.flush()
                 self._stats['commands_sent'] += 1
                 return True
                 
@@ -356,38 +438,53 @@ class SerialManager:
             self._notify_status_change(False)
             return False
 
-    def _read_response(self) -> Optional[Dict[str, Any]]:
-        """Read and parse response from serial port."""
+    def _read_line(self) -> Optional[str]:
+        """Read a line from serial port."""
         try:
             with self._connection_lock:
                 if not self._serial or not self._serial.is_open:
                     return None
                 
-                line = self._serial.readline().decode('utf-8').strip()
+                line = self._serial.readline().decode('utf-8', errors='ignore').strip()
                 if line:
-                    response = json.loads(line)
                     self._stats['responses_received'] += 1
-                    return response
+                    return line
                     
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse JSON response: {e}")
         except Exception as e:
-            self.logger.error(f"Failed to read response: {e}")
+            self.logger.error(f"Failed to read line: {e}")
             self._connected = False
             self._notify_status_change(False)
             
         return None
 
-    def _handle_response(self, response: Dict[str, Any]):
-        """Handle incoming response from motor controller."""
-        command_id = response.get('_command_id')
-        if command_id and command_id in self._response_futures:
+    def _handle_response_line(self, line: str):
+        """Handle incoming response line from motor controller."""
+        self.logger.debug(f"Received: {line}")
+        
+        # Parse the response and complete any waiting futures
+        # For now, just complete the most recent command future
+        if self._response_futures:
+            # Get the oldest pending future
+            command_id = next(iter(self._response_futures))
             future = self._response_futures.pop(command_id)
+            
             if not future.done():
-                if response.get('success', True):
-                    serial_response = SerialResponse(True, response.get('data', {}))
-                else:
-                    serial_response = SerialResponse(False, error=response.get('error'))
+                # Parse the response based on content
+                success = not any(error_word in line.lower() for error_word in ['error', 'failed', 'invalid'])
+                
+                response_data = {'message': line}
+                
+                # Try to extract useful data from specific responses
+                if 'status' in line.lower():
+                    response_data['type'] = 'status'
+                elif 'motor' in line.lower():
+                    response_data['type'] = 'motor'
+                
+                serial_response = SerialResponse(
+                    success=success, 
+                    data=response_data, 
+                    raw_response=line
+                )
                 future.set_result(serial_response)
 
     def _handle_command_error(self, cmd: SerialCommand, error: str):

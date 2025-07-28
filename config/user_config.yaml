@@ -9,24 +9,24 @@ serial:
 
 # Kinematics Engine Settings  
 kinematics:
-  steps_per_mm: 80.0
+  steps_per_mm: 1.5
   max_cable_length: 2000.0
-  min_cable_length: 50.0
+  min_cable_length: 5.0
   
   # Motor positions in 3D space (mm)
   motor_positions:
-    - {x: -500, y: 500, z: 1000}   # Motor 1: Front-left
-    - {x: 500, y: 500, z: 1000}    # Motor 2: Front-right
-    - {x: 500, y: -500, z: 1000}   # Motor 3: Back-right
-    - {x: -500, y: -500, z: 1000}  # Motor 4: Back-left
-  
-  # Workspace boundaries (mm)
-  workspace_x_min: -400.0
-  workspace_x_max: 400.0
-  workspace_y_min: -400.0
-  workspace_y_max: 400.0
-  workspace_z_min: 100.0
-  workspace_z_max: 800.0
+    - {x: -569, y: 236, z: 0}   # Motor 1: Top-Front-left
+    - {x: -569, y: -269, z: 0}    # Motor 2: Top-Front-right
+    - {x: 569, y: -269, z: 0}   # Motor 3: Top-Back-right
+    - {x: 569, y: 236, z: 0}  # Motor 4: Top-Back-left
+
+  # Workspace boundaries (mm) - Home is at (0,0,0), lowest safe point is -450mm
+  workspace_x_min: -500.0
+  workspace_x_max: 500.0
+  workspace_y_min: -200.0
+  workspace_y_max: 200.0
+  workspace_z_min: -450.0
+  workspace_z_max: 0.0
 
 # Motor Controller Settings
 motor:

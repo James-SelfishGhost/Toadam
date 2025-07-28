@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 3D Cable-Driven Positioning System - Main Application
 
@@ -14,7 +13,6 @@ This file demonstrates the complete Phase 1 implementation.
 
 import asyncio
 import logging
-import signal
 import sys
 from pathlib import Path
 
@@ -320,15 +318,27 @@ class CablePositioningSystem:
             # Keep system running for interactive use
             self.logger.info("📡 System ready for operation (Ctrl+C to stop)")
             
-            while self.running:
-                await asyncio.sleep(1.0)
-                
-                # Check for any system issues
-                if not self.serial_manager.is_connected():
-                    self.logger.warning("⚠️ Serial connection lost - attempting reconnection...")
+            try:
+                while self.running:
+                    # Use shorter sleep for better responsiveness
+                    await asyncio.sleep(0.1)
+                    
+                    # Check for any system issues occasionally
+                    if not hasattr(self, '_last_connection_check'):
+                        self._last_connection_check = 0
+                    
+                    import time
+                    current_time = time.time()
+                    if current_time - self._last_connection_check > 5.0:  # Check every 5 seconds
+                        if not self.serial_manager.is_connected():
+                            self.logger.warning("⚠️ Serial connection lost - attempting reconnection...")
+                        self._last_connection_check = current_time
+                        
+            except asyncio.CancelledError:
+                self.logger.info("👋 Task cancelled, shutting down")
                 
         except KeyboardInterrupt:
-            self.logger.info("👋 Received shutdown signal")
+            self.logger.info("👋 Received Ctrl+C, shutting down")
         except Exception as e:
             self.logger.error(f"System error: {e}")
         finally:
@@ -340,21 +350,11 @@ class CablePositioningSystem:
         self.running = False
 
 
-def signal_handler(signum, frame):
-    """Handle shutdown signals."""
-    print(f"\n🛑 Received signal {signum}, shutting down...")
-    # This will be handled by the main loop
-    
-
 async def main():
     """Main entry point."""
     print("=" * 60)
     print("   3D Cable-Driven Positioning System - Phase 1")
     print("=" * 60)
-    
-    # Setup signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
     
     # Create and run system
     system = CablePositioningSystem()

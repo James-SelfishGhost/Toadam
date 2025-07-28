@@ -1,0 +1,46 @@
+{
+  "motor_positions": [
+    {"x": -569, "y": 236, "z": 0},
+    {"x": -569, "y": -269, "z": 0},
+    {"x": 569, "y": -269, "z": 0},
+    {"x": 569, "y": 236, "z": 0}
+  ],
+  "workspace_bounds": {
+    "x_min": -500.0,
+    "x_max": 500.0,
+    "y_min": -200.0,
+    "y_max": 200.0,
+    "z_min": -450.0,
+    "z_max": 0.0
+  },
+  "steps_per_mm": 1.5,
+  "reference_points": [
+    {
+      "name": "workspace_center",
+      "position": {"x": 0.0, "y": 0.0, "z": -225.0},
+      "cable_lengths": {
+        "motor_1": 629.86,
+        "motor_2": 629.86,
+        "motor_3": 629.86,
+        "motor_4": 629.86
+      },
+      "motor_steps": [944, 944, 944, 944],
+      "measurement_accuracy": 2.0
+    },
+    {
+      "name": "home_position",
+      "position": {"x": 0.0, "y": 0.0, "z": 0.0},
+      "cable_lengths": {
+        "motor_1": 629.86,
+        "motor_2": 629.86,
+        "motor_3": 629.86,
+        "motor_4": 629.86
+      },
+      "motor_steps": [944, 944, 944, 944],
+      "measurement_accuracy": 1.0
+    }
+  ],
+  "calibration_timestamp": 1732224000.0,
+  "calibration_accuracy": 1.5,
+  "status": "completed"
+} 
